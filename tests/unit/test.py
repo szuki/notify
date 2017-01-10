@@ -33,6 +33,17 @@ class TestCase(testtools.TestCase):
                         "what": "Hooray!",
                         "who": "John Doe"}
 
+        self.prometheus_payload = {
+            'alerts': [{
+                'annotations': {
+                    'description': 'keystone.ccp.svc:5000/v3 is down',
+                    'summary': 'Prometheus target keystone.ccp.svc:5000/v3',
+                    'sth_special': 'abc'},
+                'labels': {
+                    'region': 'earth',
+                    'affected_hosts': 'all',
+                    'severity': 'warning'}}]}
+
     def get(self, *args, **kwargs):
         rv = self.client.get(*args, **kwargs)
         return rv.status_code, json.loads(rv.data.decode())

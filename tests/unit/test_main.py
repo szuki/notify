@@ -40,7 +40,11 @@ class MainTestCase(test.TestCase):
     def test_api_map(self):
         code, resp = self.get("/")
         self.assertEqual(200, code)
-        self.assertEqual(1, len(resp))
-        self.assertIn({"endpoint": "notify.send_notification",
-                       "methods": ["OPTIONS", "POST"],
-                       "uri": "/api/v1/notify/<backends>"}, resp)
+        self.assertEqual(2, len(resp))
+        self.assertListEqual([
+            {'endpoint': 'notify.send_notification',
+             'methods': ['OPTIONS', 'POST'],
+             'uri': '/api/v1/notify/<backends>'},
+            {'endpoint': 'notify.send_prometheus_notification',
+             'methods': ['OPTIONS', 'POST'],
+             'uri': '/api/v1/prometheus_notify/<backends>'}], resp)

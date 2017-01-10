@@ -71,3 +71,7 @@ class DriverTestCase(test.TestCase):
     def test_notify(self):
         drv = driver.Driver({})
         self.assertRaises(NotImplementedError, drv.notify, self.payload)
+
+    def test_validate_prometheus_payload(self):
+        self.assertIsNone(
+            driver.Driver.validate_prometheus_payload(self.prometheus_payload))

@@ -76,6 +76,38 @@ class Driver(object):
         "additionalProperties": False
     }
 
+    PROMETHEUS_PAYLOAD_SCHEMA = {
+        "$schema": "http://json-schema.org/draft-04/schema",
+        "type": "object",
+        "properties": {
+            "alerts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "object",
+                            "required": ["summary", "description"],
+                            "properties": {
+                                "summary": {"type": "string"},
+                                "description": {"type": "string"}}},
+                        "labels": {
+                            "type": "object",
+                            "properties": {
+                                "region": {"type": "string"},
+                                "affected_hosts": {"type": "string"},
+                                "severity": {"enum": ["ok", "info", "unknown",
+                                                      "warning", "critical",
+                                                      "down"]},
+                            },
+                            "required": ["region", "affected_hosts",
+                                         "severity"]
+                        }
+                    },
+                    "required": ["annotations", "labels"]}}},
+        "required": ["alerts"]
+    }
+
     CONFIG_SCHEMA = {
         "$schema": "http://json-schema.org/draft-04/schema",
         "type": "object"
@@ -90,6 +122,18 @@ class Driver(object):
         """
         try:
             jsonschema.validate(payload, cls.PAYLOAD_SCHEMA)
+        except jsonschema.exceptions.ValidationError as e:
+            raise ValueError(str(e))
+
+    @classmethod
+    def validate_prometheus_payload(cls, payload):
+        """Payload validation.
+
+        :param payload: notification prometheus payload
+        :raises: ValueError
+        """
+        try:
+            jsonschema.validate(payload, cls.PROMETHEUS_PAYLOAD_SCHEMA)
         except jsonschema.exceptions.ValidationError as e:
             raise ValueError(str(e))
 

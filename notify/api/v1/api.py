@@ -43,11 +43,17 @@ def make_hash(dct):
     return hashlib.md5(str_repr.encode("utf-8")).hexdigest()
 
 
+def get_driver(drv_name, drv_conf):
+    key = "{}.{}".format(drv_name, make_hash(drv_conf))
+    if key not in CACHE:
+        CACHE[key] = driver.get_driver(drv_name, drv_conf)
+    return CACHE[key]
+
+
 @bp.route("/notify/<backends>", methods=["POST"])
 def send_notification(backends):
     global CACHE
 
-    backends = set(backends.split(","))
     payload = flask.request.get_json(force=True, silent=True)
 
     if not payload:
@@ -58,6 +64,7 @@ def send_notification(backends):
     except ValueError as e:
         return flask.jsonify({"error": "Bad Payload: {}".format(e)}), 400
 
+    backends = set(backends.split(","))
     notify_backends = config.get_config()["notify_backends"]
 
     unexpected = backends - set(notify_backends)
@@ -70,11 +77,7 @@ def send_notification(backends):
 
     for backend in backends:
         for drv_name, drv_conf in notify_backends[backend].items():
-
-            key = "{}.{}".format(drv_name, make_hash(drv_conf))
-            if key not in CACHE:
-                CACHE[key] = driver.get_driver(drv_name, drv_conf)
-            driver_ins = CACHE[key]
+            driver_ins = get_driver(drv_name, drv_conf)
 
             result["total"] += 1
             if backend not in result["result"]:
@@ -98,6 +101,67 @@ def send_notification(backends):
                 result["errors"] += 1
 
     return flask.jsonify(result), 200
+
+
+def _convert_prometheus_payload(ppayload):
+    alerts = ppayload['alerts']
+    converted_payloads = []
+    for alert in alerts:
+        converted_payloads.append({
+            'region': alert['labels']['region'],
+            'serverity': alert['labels']['severity'],
+            'description': alert['description'],
+            'who': 'Prometheus',
+            'what': alert['summary'],
+            'affected_hosts': alert['labels']['affected_hosts'],
+        })
+
+    return converted_payloads
+
+
+@bp.route("/prometheus_notify/<backends>", methods=["POST"])
+def send_prometheus_notification(backends):
+    global CACHE
+
+    prometheus_payload = flask.request.get_json(force=True, silent=True)
+
+    if not prometheus_payload:
+        return flask.jsonify({"error": "Missed Payload"}), 400
+
+    try:
+        driver.Driver.validate_prometheus_payload(prometheus_payload)
+    except ValueError as e:
+        return flask.jsonify({"error": "Bad Payload: {}".format(e)}), 400
+
+    payloads = _convert_prometheus_payload(prometheus_payload)
+
+    backends = set(backends.split(","))
+
+    notify_backends = config.get_config()["notify_backends"]
+
+    unexpected = backends - set(notify_backends)
+    if unexpected:
+        mesg = "Unexpected backends: {}".format(", ".join(unexpected))
+        return flask.jsonify({"error": mesg}), 400
+
+    errors = []
+    for payload in payloads:
+        for backend in backends:
+            for drv_name, drv_conf in notify_backends[backend].items():
+                driver_ins = get_driver(drv_name, drv_conf)
+
+                try:
+                    driver_ins.notify(payload)
+                except Exception as e:
+                    error = "Backend '{}' driver '{}': {}: {}".format(
+                        backend, drv_name, type(e), e)
+                    errors.append(error)
+                    LOG.exception(error)
+    if errors:
+        # kszukielojc: sending 5xx code will lead to retry from prometheus
+        return flask.jsonify({"error", errors}), 400
+
+    return flask.jsonify({}), 200
 
 
 def get_blueprints():

@@ -89,3 +89,38 @@ class ApiTestCase(test.TestCase):
                     "total": 1, "errors": 1, "failed": 0, "passed": 0,
                     "result": {"b1": {"bar": {"error": "Spam!"}}}}
         self.assertEqual(expected, resp)
+
+    def test_send_prometheus_notification_request_with_bad_payload(self):
+        code, resp = self.post("/api/v1/prometheus_notify/foo",
+                               data=json.dumps({"strange": "data"}))
+        self.assertEqual(400, code)
+        self.assertIn("Bad Payload:", resp["error"])
+
+    def test_send_prometheus_notification_request_without_data(self):
+        code, resp = self.post("/api/v1/prometheus_notify/foo")
+        self.assertEqual(400, code)
+        self.assertEqual({"error": "Missed Payload"}, resp)
+
+    @mock.patch("notify.api.v1.api.config")
+    @mock.patch("notify.driver.get_driver")
+    def test_send_prometheus_notification(self, mock_get_driver, mock_config):
+        mock_config.get_config.return_value = {
+            "notify_backends": {b: {"drvname": {"conf": 42}}
+                                for b in ("backend1", "backend2")}}
+        mock_get_driver.return_value.notify.return_value = True
+        code, resp = self.post("/api/v1/notify/backend1,backend2",
+                               data=json.dumps(self.payload))
+
+        self.assertEqual(200, code)
+
+    @mock.patch("notify.api.v1.api.config")
+    @mock.patch("notify.driver.get_driver")
+    def test_send_promethenus_notification_got_explained_error(
+            self, mock_get_driver, mock_config):
+        mock_config.get_config.return_value = {
+            "notify_backends": {"b1": {"bar": {"x": 123}}}}
+        side_effect = driver.ExplainedError("Spam!")
+        mock_get_driver.return_value.notify.side_effect = side_effect
+        code, resp = self.post("/api/v1/prometheus_notify/b1",
+                               data=json.dumps(self.payload))
+        self.assertEqual(400, code)
